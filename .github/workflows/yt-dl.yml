@@ -2,7 +2,7 @@
 # yt-dl.yml — Khashayar YouTube Downloader (Final Version)
 # Repository: github.com/khashayardev/youtube-downloader-template
 # Combining best practices: 8 bypass methods + Quality Gate +
-# Resilient sanitize + Clean README generation
+# Resilient sanitize + Clean README generation + User Notification
 # ============================================================
 
 name: "🎬 Khashayar YouTube Downloader"
@@ -35,6 +35,11 @@ on:
         default: false
       password:
         description: "🔒 ZIP Password (optional)"
+        required: false
+        type: string
+        default: ""
+      chat_id:
+        description: "🆔 User Chat ID for notification"
         required: false
         type: string
         default: ""
@@ -574,7 +579,7 @@ jobs:
           ls -la "$JSON_FILE"
 
       # ═══════════════════════════════════════════════════════════════════
-      # 🆕 NEW STEP 2: Prepare Bale inline buttons (to be sent via gateway.php)
+      # 🆕 NEW STEP 2: Prepare Bale inline buttons
       # ═══════════════════════════════════════════════════════════════════
       - name: "🔗 Prepare Bale inline buttons"
         if: env.CHANNEL_ID != ''
@@ -637,6 +642,50 @@ jobs:
           
           # Also save to videos folder for gateway.php access
           cp "$BUTTONS_FILE" videos/bale_buttons_${{ github.run_id }}.json 2>/dev/null || true
+
+      # ═══════════════════════════════════════════════════════════════════
+      # 🆕 NEW STEP 3: Notify user with download buttons
+      # ═══════════════════════════════════════════════════════════════════
+      - name: "📬 Notify User"
+        if: env.CHANNEL_ID != '' && github.event.inputs.chat_id != ''
+        env:
+          BALE_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
+          CHAT_ID: ${{ github.event.inputs.chat_id }}
+        run: |
+          #!/bin/bash
+          BACKUP_DIR="${{ env.BACKUP_DIR }}"
+          BUTTONS_FILE="$BACKUP_DIR/bale_buttons.json"
+          
+          if [ ! -f "$BUTTONS_FILE" ]; then
+            echo "❌ No buttons file found at $BUTTONS_FILE"
+            exit 0
+          fi
+          
+          echo "📬 Sending notification to chat_id: $CHAT_ID"
+          
+          INLINE_KEYBOARD=$(cat "$BUTTONS_FILE")
+          
+          jq -n \
+            --arg chat_id "$CHAT_ID" \
+            --arg text "✅ *فایل شما آماده است!*\n\n👇 برای دریافت روی دکمه زیر کلیک کنید:" \
+            --argjson reply_markup "$INLINE_KEYBOARD" \
+            '{chat_id: $chat_id, text: $text, parse_mode: "Markdown", reply_markup: $reply_markup}' \
+            > /tmp/notify.json
+          
+          echo "📋 Payload:"
+          cat /tmp/notify.json | jq '.'
+          
+          RESPONSE=$(curl -s -X POST "https://tapi.bale.ai/bot${BALE_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d @/tmp/notify.json)
+          
+          echo "📬 Response: $RESPONSE"
+          
+          if echo "$RESPONSE" | jq -e '.ok == true' > /dev/null 2>&1; then
+            echo "✅ Notification sent successfully to $CHAT_ID"
+          else
+            echo "❌ Failed to send notification"
+          fi
 
       # ── Step 9: Push ──────────────────────────────────
       - name: "📤 Push to Repository"
