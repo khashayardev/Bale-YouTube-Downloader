@@ -1,0 +1,264 @@
+# ============================================================
+# yt-search.yml — Bale YouTube Search Engine V7 (Docker Compatible)
+# ============================================================
+
+name: "🔍 YouTube Search"
+
+on:
+  workflow_dispatch:
+    inputs:
+      query:
+        description: "عبارت جستجو"
+        required: true
+        type: string
+      chat_id:
+        description: "شناسه کاربر"
+        required: true
+        type: string
+      max_results:
+        description: "تعداد نتایج (۱ تا ۱۰)"
+        required: false
+        type: string
+        default: "5"
+
+jobs:
+  search:
+    name: "🔎 Search & Display"
+    runs-on: ubuntu-latest
+    container:
+      image: khashayardev/bale-yt-downloader:latest
+    timeout-minutes: 5
+
+    steps:
+      - name: "📦 Verify Dependencies"
+        run: |
+          echo "✅ Pre-installed in Docker image"
+          yt-dlp --version
+          jq --version
+
+      - name: "🔍 Search & Send Results"
+        env:
+          BALE_BOT_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
+        run: |
+          #!/bin/bash
+          set +e
+          
+          QUERY="${{ github.event.inputs.query }}"
+          CHAT_ID="${{ github.event.inputs.chat_id }}"
+          MAX_RESULTS="${{ github.event.inputs.max_results }}"
+          BOT_TOKEN="${{ secrets.BALE_BOT_TOKEN }}"
+          
+          send_message() {
+            local text="$1"
+            local reply_markup="${2:-}"
+            
+            if [ -n "$reply_markup" ]; then
+              jq -n \
+                --arg chat_id "$CHAT_ID" \
+                --arg text "$text" \
+                --argjson reply_markup "$reply_markup" \
+                '{chat_id: $chat_id, text: $text, parse_mode: "Markdown", reply_markup: $reply_markup}' \
+                > /tmp/payload.json
+            else
+              jq -n \
+                --arg chat_id "$CHAT_ID" \
+                --arg text "$text" \
+                '{chat_id: $chat_id, text: $text, parse_mode: "Markdown"}' \
+                > /tmp/payload.json
+            fi
+            
+            curl -s -X POST "https://tapi.bale.ai/bot${BOT_TOKEN}/sendMessage" \
+              -H "Content-Type: application/json" \
+              -d @/tmp/payload.json > /dev/null 2>&1
+          }
+          
+          format_number() {
+            local num=$1
+            if [ -z "$num" ] || [ "$num" = "null" ] || [ "$num" = "0" ] || [ "$num" -eq 0 ] 2>/dev/null; then
+              echo ""
+              return
+            fi
+            
+            if [ "$num" -gt 1000000000 ] 2>/dev/null; then
+              local val=$(echo "scale=1; $num / 1000000000" | bc 2>/dev/null)
+              echo "${val} میلیارد"
+            elif [ "$num" -gt 1000000 ] 2>/dev/null; then
+              local val=$(echo "scale=1; $num / 1000000" | bc 2>/dev/null)
+              echo "${val} میلیون"
+            elif [ "$num" -gt 1000 ] 2>/dev/null; then
+              local val=$(echo "scale=1; $num / 1000" | bc 2>/dev/null)
+              echo "${val} هزار"
+            else
+              echo "${num}"
+            fi
+          }
+          
+          send_message "🔍 *در حال جستجو...*
+
+          ▫️ عبارت: \`${QUERY}\`
+          ▫️ در حال بررسی ${MAX_RESULTS} نتیجه برتر
+
+          ⏳ _لطفاً چند لحظه صبر کنید..._"
+          
+          RESULTS_FILE="/tmp/search_results.json"
+          
+          yt-dlp \
+            "ytsearch${MAX_RESULTS}:${QUERY}" \
+            --dump-json \
+            --no-playlist \
+            --no-check-certificates \
+            --skip-download \
+            --flat-playlist \
+            2>/dev/null > "$RESULTS_FILE" || true
+          
+          RESULT_COUNT=$(wc -l < "$RESULTS_FILE" 2>/dev/null || echo 0)
+          
+          if [ "$RESULT_COUNT" -eq 0 ]; then
+            send_message "❌ *نتیجه‌ای یافت نشد!*
+
+          برای عبارت: \`${QUERY}\`
+          هیچ ویدیویی پیدا نکردم.
+
+          💡 _لطفاً عبارت دیگری را امتحان کنید._"
+            exit 0
+          fi
+          
+          echo "✅ Found $RESULT_COUNT results."
+          
+          BODY_FILE="/tmp/body.txt"
+          > "$BODY_FILE"
+          LINE_NUM=0
+          
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            LINE_NUM=$((LINE_NUM + 1))
+            
+            TITLE=$(echo "$line" | jq -r '.title // "بدون عنوان"')
+            VIDEO_ID=$(echo "$line" | jq -r '.id // .display_id // ""')
+            VIDEO_URL="https://www.youtube.com/watch?v=${VIDEO_ID}"
+            CHANNEL=$(echo "$line" | jq -r '.channel // .uploader // "نامشخص"')
+            VIEW_COUNT=$(echo "$line" | jq -r '.view_count // 0')
+            DURATION=$(echo "$line" | jq -r '.duration // 0')
+            UPLOAD_DATE=$(echo "$line" | jq -r '.upload_date // ""')
+            DESCRIPTION=$(echo "$line" | jq -r '.description // ""')
+            
+            VIEW_COUNT_FORMATTED=$(format_number $VIEW_COUNT)
+            
+            if [ "$DURATION" -gt 0 ] 2>/dev/null; then
+              M=$((DURATION / 60))
+              S=$((DURATION % 60))
+              DURATION_FORMATTED="${M}:$(printf '%02d' $S)"
+            else
+              DURATION_FORMATTED=""
+            fi
+            
+            if [ -n "$UPLOAD_DATE" ] && [ ${#UPLOAD_DATE} -eq 8 ]; then
+              UPLOAD_FORMATTED="${UPLOAD_DATE:0:4}/${UPLOAD_DATE:4:2}/${UPLOAD_DATE:6:2}"
+            else
+              UPLOAD_FORMATTED=""
+            fi
+            
+            if [ -n "$DESCRIPTION" ] && [ "$DESCRIPTION" != "null" ]; then
+              DESC_SHORT=$(echo "$DESCRIPTION" | head -1 | cut -c1-120)
+              if [ ${#DESCRIPTION} -gt 120 ]; then
+                DESC_SHORT="${DESC_SHORT}..."
+              fi
+            else
+              DESC_SHORT=""
+            fi
+            
+            case $LINE_NUM in
+              1) NUM_ICON="1️⃣" ;;
+              2) NUM_ICON="2️⃣" ;;
+              3) NUM_ICON="3️⃣" ;;
+              4) NUM_ICON="4️⃣" ;;
+              5) NUM_ICON="5️⃣" ;;
+              6) NUM_ICON="6️⃣" ;;
+              7) NUM_ICON="7️⃣" ;;
+              8) NUM_ICON="8️⃣" ;;
+              9) NUM_ICON="9️⃣" ;;
+              10) NUM_ICON="🔟" ;;
+              *) NUM_ICON="${LINE_NUM}." ;;
+            esac
+            
+            echo "${NUM_ICON} *${TITLE}*" >> "$BODY_FILE"
+            
+            if [ -n "$DESC_SHORT" ]; then
+              echo "  📝 ${DESC_SHORT}" >> "$BODY_FILE"
+            fi
+            
+            echo "  🔗 [مشاهده در یوتیوب](${VIDEO_URL})" >> "$BODY_FILE"
+            echo "  👤 کانال: ${CHANNEL}" >> "$BODY_FILE"
+            
+            if [ -n "$DURATION_FORMATTED" ]; then
+              echo "  ⏱ مدت: ${DURATION_FORMATTED}" >> "$BODY_FILE"
+            fi
+            
+            if [ -n "$VIEW_COUNT_FORMATTED" ]; then
+              echo "  👁 بازدید: ${VIEW_COUNT_FORMATTED}" >> "$BODY_FILE"
+            fi
+            
+            if [ -n "$UPLOAD_FORMATTED" ]; then
+              echo "  📅 تاریخ: ${UPLOAD_FORMATTED}" >> "$BODY_FILE"
+            fi
+
+            echo "" >> "$BODY_FILE"
+            
+          done < "$RESULTS_FILE"
+          
+          HEADER="🔍 *نتایج جستجو*
+
+          ▫️ *عبارت:* \`${QUERY}\`
+          ▫️ *تعداد نتایج:* ${RESULT_COUNT} ویدیو
+
+          ━━━━━━━━━━━━━━━━━━━━━
+
+          "
+          
+          FOOTER="━━━━━━━━━━━━━━━━━━━━━
+
+          👇 *برای دانلود هر ویدیو، روی دکمه آن کلیک کنید.*
+
+          💡 _با ارسال دوباره عبارت، جستجوی جدید انجام دهید._"
+          
+          FULL_MESSAGE="${HEADER}$(cat ${BODY_FILE})${FOOTER}"
+          
+          # ساخت دکمه‌ها — استفاده از فایل موقت برای جلوگیری از خطای sh
+          KEYBOARD_FILE="/tmp/keyboard.json"
+          echo '{"inline_keyboard":[' > "$KEYBOARD_FILE"
+          
+          LINE_NUM=0
+          FIRST=true
+          
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            LINE_NUM=$((LINE_NUM + 1))
+            
+            VIDEO_ID=$(echo "$line" | jq -r '.id // .display_id // ""')
+            TITLE=$(echo "$line" | jq -r '.title // "بدون عنوان"')
+            
+            BTN_TITLE=$(echo "$TITLE" | cut -c1-30)
+            if [ ${#TITLE} -gt 30 ]; then
+              BTN_TITLE="${BTN_TITLE}..."
+            fi
+            
+            if [ "$FIRST" = true ]; then
+              FIRST=false
+            else
+              echo ',' >> "$KEYBOARD_FILE"
+            fi
+            
+            jq -n \
+              --arg text "📥 ${BTN_TITLE}" \
+              --arg data "dl_${VIDEO_ID}" \
+              '[{"text": $text, "callback_data": $data}]' >> "$KEYBOARD_FILE"
+            
+          done < "$RESULTS_FILE"
+          
+          echo ']}' >> "$KEYBOARD_FILE"
+          
+          INLINE_KEYBOARD=$(cat "$KEYBOARD_FILE")
+          
+          send_message "$FULL_MESSAGE" "$INLINE_KEYBOARD"
+          
+          echo "✅ Search complete. ${RESULT_COUNT} results sent."
