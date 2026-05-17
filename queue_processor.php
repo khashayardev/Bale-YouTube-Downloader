@@ -42,7 +42,9 @@ declare(strict_types=1);
 // Security: Ensure CLI-only execution
 // ══════════════════════════════════════════════════════════
 
-if (php_sapi_name() !== 'cli') {
+define('APP_RUNNING', true);
+
+if (php_sapi_name() !== 'cli' && !defined('APP_RUNNING')) {
     http_response_code(403);
     die('⛔ This script can only be run from command line (cron).');
 }
@@ -51,7 +53,7 @@ if (php_sapi_name() !== 'cli') {
 // Bootstrap
 // ══════════════════════════════════════════════════════════
 
-define('APP_RUNNING', true);
+
 
 require_once __DIR__ . '/lib/Config.php';
 require_once __DIR__ . '/lib/Logger.php';
