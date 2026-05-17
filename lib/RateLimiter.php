@@ -29,8 +29,12 @@
  *   • Daily auto-reset: No cron needed for counter reset
  *   • Separate windows: Downloads vs status checks don't interfere
  * 
+ * 🔧 PATCHED v5.0.1: All chatId params accept string|int
+ *   Reason: Bale sends chat_id as integer (e.g. 241726352) but strict_types=1
+ *   requires exact type match. Using union type string|int fixes the TypeError.
+ * 
  * @package     KhashayarDownloader
- * @version     5.0.0
+ * @version     5.0.1
  * @author      Khashayar
  * @license     MIT
  * @since       2026-05-16
@@ -88,10 +92,10 @@ class RateLimiter
     /**
      * Check if a user is currently rate limited for downloads
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @return bool True if user cannot make a request now
      */
-    public function isRateLimited(string $chatId): bool
+    public function isRateLimited(string|int $chatId): bool
     {
         // First, check daily limit
         if ($this->isDailyLimitExceeded($chatId)) {
@@ -121,10 +125,10 @@ class RateLimiter
     /**
      * Record a download request for rate limiting
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @return void
      */
-    public function recordRequest(string $chatId): void
+    public function recordRequest(string|int $chatId): void
     {
         $now = time();
         
@@ -161,10 +165,10 @@ class RateLimiter
     /**
      * Get remaining seconds until user can make another request
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @return int Seconds remaining (0 if user can request now)
      */
-    public function getRemainingTime(string $chatId): int
+    public function getRemainingTime(string|int $chatId): int
     {
         $lastRequest = $this->getLastRequestTime($chatId);
         
@@ -181,10 +185,10 @@ class RateLimiter
     /**
      * Get formatted remaining time string for user display
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @return string Human-readable remaining time
      */
-    public function getRemainingTimeFormatted(string $chatId): string
+    public function getRemainingTimeFormatted(string|int $chatId): string
     {
         $seconds = $this->getRemainingTime($chatId);
         
@@ -211,10 +215,10 @@ class RateLimiter
     /**
      * Check if user exceeded daily request limit
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @return bool True if daily limit exceeded
      */
-    public function isDailyLimitExceeded(string $chatId): bool
+    public function isDailyLimitExceeded(string|int $chatId): bool
     {
         $this->resetDailyIfNeeded($chatId);
 
@@ -229,10 +233,10 @@ class RateLimiter
     /**
      * Get number of requests user made today
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @return int Number of requests today
      */
-    public function getTodayRequestCount(string $chatId): int
+    public function getTodayRequestCount(string|int $chatId): int
     {
         $this->resetDailyIfNeeded($chatId);
 
@@ -247,10 +251,10 @@ class RateLimiter
     /**
      * Get remaining requests for today
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @return int Remaining requests today
      */
-    public function getRemainingDailyRequests(string $chatId): int
+    public function getRemainingDailyRequests(string|int $chatId): int
     {
         $used = $this->getTodayRequestCount($chatId);
         return max(0, $this->dailyLimit - $used);
@@ -259,10 +263,10 @@ class RateLimiter
     /**
      * Reset daily counter if date has changed
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @return void
      */
-    private function resetDailyIfNeeded(string $chatId): void
+    private function resetDailyIfNeeded(string|int $chatId): void
     {
         $lastResetDate = $this->db->fetchValue(
             "SELECT last_reset_date FROM rate_limits WHERE chat_id = :chat_id",
@@ -295,10 +299,10 @@ class RateLimiter
     /**
      * Check if status check is rate limited (separate from download limit)
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @return bool True if status check cannot be done now
      */
-    public function isStatusCheckLimited(string $chatId): bool
+    public function isStatusCheckLimited(string|int $chatId): bool
     {
         // Status checks use a different time window
         // For simplicity, we use the same mechanism but check against STATUS_CHECK_SECONDS
@@ -328,10 +332,10 @@ class RateLimiter
     /**
      * Get user's last request timestamp
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @return int|null Unix timestamp or null if no request recorded
      */
-    private function getLastRequestTime(string $chatId): ?int
+    private function getLastRequestTime(string|int $chatId): ?int
     {
         $time = $this->db->fetchValue(
             "SELECT last_request_time FROM rate_limits WHERE chat_id = :chat_id",
@@ -344,10 +348,10 @@ class RateLimiter
     /**
      * Reset rate limit for a user (admin function)
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @return void
      */
-    public function resetUser(string $chatId): void
+    public function resetUser(string|int $chatId): void
     {
         $this->db->execute(
             "DELETE FROM rate_limits WHERE chat_id = :chat_id",
@@ -413,11 +417,11 @@ class RateLimiter
  * Quick check: is user rate limited?
  * (Preserved from original gateway.php for compatibility)
  * 
- * @param string $chatId User's chat ID
+ * @param string|int $chatId User's chat ID
  * @param SQLite3|null $db (Deprecated) Old SQLite3 connection
  * @return bool True if rate limited
  */
-function isRateLimited_compat(string $chatId, ?SQLite3 $db = null): bool
+function isRateLimited_compat(string|int $chatId, ?SQLite3 $db = null): bool
 {
     $limiter = new RateLimiter();
     return $limiter->isRateLimited($chatId);
@@ -427,11 +431,11 @@ function isRateLimited_compat(string $chatId, ?SQLite3 $db = null): bool
  * Quick update: record user request
  * (Preserved from original gateway.php for compatibility)
  * 
- * @param string $chatId User's chat ID
+ * @param string|int $chatId User's chat ID
  * @param SQLite3|null $db (Deprecated) Old SQLite3 connection
  * @return void
  */
-function updateRateLimit_compat(string $chatId, ?SQLite3 $db = null): void
+function updateRateLimit_compat(string|int $chatId, ?SQLite3 $db = null): void
 {
     $limiter = new RateLimiter();
     $limiter->recordRequest($chatId);
