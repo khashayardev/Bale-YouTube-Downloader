@@ -373,6 +373,20 @@ class Database
             )
         ");
 
+        // ═══════════════════════════════════════════════════
+        // 9. user_channels — User's personal archive channels
+        // ═══════════════════════════════════════════════════
+        $this->db->exec("
+            CREATE TABLE IF NOT EXISTS user_channels (
+                chat_id          TEXT PRIMARY KEY,
+                channel_id       TEXT NOT NULL,
+                channel_username TEXT DEFAULT '',
+                verified_at      INTEGER DEFAULT 0,
+                is_active        INTEGER DEFAULT 1
+            )
+        ");
+        $this->db->exec("CREATE INDEX IF NOT EXISTS idx_user_channels_active ON user_channels(chat_id, is_active)");
+
         Logger::debug('All tables created successfully');
     }
 
