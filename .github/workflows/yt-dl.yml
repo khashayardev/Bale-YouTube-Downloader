@@ -653,31 +653,34 @@ jobs:
           cp "$BUTTONS_FILE" videos/bale_buttons_${{ github.run_id }}.json 2>/dev/null || true
 
       # ═══════════════════════════════════════════════════════════════════
-      # 🆕 NEW STEP 3: Notify user with download buttons
+      # 🆕 NEW STEP 3: Notify user with channel link button
       # ═══════════════════════════════════════════════════════════════════
       - name: "📬 Notify User"
         if: github.event.inputs.chat_id != ''
         env:
           BALE_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
           CHAT_ID: ${{ github.event.inputs.chat_id }}
+          CHANNEL_ID: ${{ github.event.inputs.channel_id }}
         run: |
           #!/bin/bash
-          BACKUP_DIR="${{ env.BACKUP_DIR }}"
-          BUTTONS_FILE="$BACKUP_DIR/bale_buttons.json"
-          
-          if [ ! -f "$BUTTONS_FILE" ]; then
-            echo "❌ No buttons file found at $BUTTONS_FILE"
-            exit 0
-          fi
           
           echo "📬 Sending notification to chat_id: $CHAT_ID"
+          echo "📢 Channel ID: $CHANNEL_ID"
           
-          INLINE_KEYBOARD=$(cat "$BUTTONS_FILE")
+          # ساخت دکمه شیشه‌ای با لینک کانال کاربر
+          if [ -n "$CHANNEL_ID" ]; then
+            CHANNEL_LINK="https://ble.ir/im/p/$CHANNEL_ID"
+            KEYBOARD=$(jq -n \
+              --arg url "$CHANNEL_LINK" \
+              '{inline_keyboard: [[{text: "📂 مشاهده و دریافت فایل", url: $url}]]}')
+          else
+            KEYBOARD='{"inline_keyboard": []}'
+          fi
           
           jq -n \
             --arg chat_id "$CHAT_ID" \
-            --arg text "✅ *فایل شما آماده است!*\n\n👇 برای دریافت روی دکمه زیر کلیک کنید:" \
-            --argjson reply_markup "$INLINE_KEYBOARD" \
+            --arg text "✅ *دانلود شما کامل شد!*\n\n📁 فایل در کانال آرشیو شما ذخیره شد.\n\n👇 برای مشاهده و دریافت فایل روی دکمه زیر کلیک کنید:" \
+            --argjson reply_markup "$KEYBOARD" \
             '{chat_id: $chat_id, text: $text, parse_mode: "Markdown", reply_markup: $reply_markup}' \
             > /tmp/notify.json
           
