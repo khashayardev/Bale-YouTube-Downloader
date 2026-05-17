@@ -78,6 +78,11 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
+      # ── Step 2.5: Install Docker (for WARP) ────────────
+      - name: "🐳 Install Docker"
+        run: |
+          apt-get update -qq && apt-get install -y -qq docker.io
+
       # ── Step 3: Cloudflare WARP ───────────────────────
       - name: "🌐 Setup Cloudflare WARP"
         run: |
