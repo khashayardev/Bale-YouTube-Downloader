@@ -78,18 +78,6 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      # ── Step 2: Git Config ────────────────────────────
-      - name: "⚙️ Configure Git"
-        run: |
-          git config --global http.postBuffer 524288000
-          git config --global http.maxRequestBuffer 100M
-          git config --global core.compression 0
-          git config --global pack.windowMemory 256m
-          git config --global pack.packSizeLimit 100m
-          git config --global pack.threads 1
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
       # ── Step 3: Cloudflare WARP ───────────────────────
       - name: "🌐 Setup Cloudflare WARP"
         run: |
