@@ -555,7 +555,7 @@ jobs:
               fi
               
               # Small delay to avoid hitting rate limits
-              sleep 1
+              sleep 3
             done
             
             # Save file_ids for this folder
