@@ -57,7 +57,7 @@ on:
 env:
   PROJECT_NAME: "Khashayar Downloader"
   PROJECT_URL: "https://khashayar.one"
-  SPLIT_SIZE_MB: 45
+  SPLIT_SIZE_MB: 40
 
 jobs:
   download:
@@ -505,7 +505,7 @@ jobs:
         run: |
           echo "🧹 Checking for old files..."
           if [ -d "videos" ]; then
-            OLD_FOLDERS=$(find videos -mindepth 1 -maxdepth 1 -type d -mmin +5 2>/dev/null || true)
+            OLD_FOLDERS=$(find videos -mindepth 1 -maxdepth 1 -type d -cmin +5 2>/dev/null || true)
             if [ -n "$OLD_FOLDERS" ]; then
               echo "$OLD_FOLDERS" | while read folder; do
                 echo "  🗑️ Removing: $folder"
