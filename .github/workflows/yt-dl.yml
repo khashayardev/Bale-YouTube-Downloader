@@ -57,7 +57,7 @@ on:
 env:
   PROJECT_NAME: "Khashayar Downloader"
   PROJECT_URL: "https://khashayar.one"
-  SPLIT_SIZE_MB: 40
+  SPLIT_SIZE_MB: 20
 
 jobs:
   download:
@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     permissions:
-      contents: write
+      contents: read
       actions: read
 
     steps:
@@ -499,21 +499,6 @@ jobs:
           docker stop warp 2>/dev/null || true
           docker rm warp 2>/dev/null || true
 
-      # ── Step 8.5: Delete files older than 5 minutes ───
-      - name: "🗑️ Delete old video files (older than 5 minutes)"
-        if: always()
-        run: |
-          echo "🧹 Checking for old files..."
-          if [ -d "videos" ]; then
-            OLD_FOLDERS=$(find videos -mindepth 1 -maxdepth 1 -type d -cmin +5 2>/dev/null || true)
-            if [ -n "$OLD_FOLDERS" ]; then
-              echo "$OLD_FOLDERS" | while read folder; do
-                echo "  🗑️ Removing: $folder"
-                rm -rf "$folder"
-              done
-            fi
-          fi
-
       # ═══════════════════════════════════════════════════════════════════
       # 🆕 NEW STEP 1: Upload parts to Bale channel (Archive)
       # ═══════════════════════════════════════════════════════════════════
@@ -709,44 +694,3 @@ jobs:
           else
             echo "❌ Failed to send notification"
           fi
-
-      # ── Step 9: Push ──────────────────────────────────
-      - name: "📤 Push to Repository"
-        id: push
-        run: |
-          #!/bin/bash
-          BACKUP_DIR="${{ env.BACKUP_DIR }}"
-          BRANCH="${{ env.BRANCH }}"
-          DOWNLOADED_COUNT="${{ env.DOWNLOADED_COUNT }}"
-          
-          if [ "$DOWNLOADED_COUNT" -eq 0 ] || [ ! -d "$BACKUP_DIR" ]; then
-            echo "⚠️ No files to push"; exit 0
-          fi
-          
-          git fetch origin "$BRANCH" --quiet
-          git reset --hard origin/"$BRANCH" --quiet
-          mkdir -p videos
-          cp -r "$BACKUP_DIR"/* videos/ 2>/dev/null || true
-          git add -f videos/
-          
-          if git diff --cached --quiet; then echo "No changes"; exit 0; fi
-          
-          git commit -m "[khashayar.one] 📥 New download(s) [skip ci]" --quiet || true
-          
-          for i in $(seq 1 10); do
-            if timeout 120 git push --force origin HEAD:"$BRANCH" 2>&1; then
-              echo "✅ Pushed (attempt $i)"; break
-            else
-              [ $i -ge 10 ] && echo "🚫 All push attempts failed" && exit 1
-              sleep $((3 + RANDOM % 10))
-              git fetch origin "$BRANCH" --quiet
-              git reset --hard origin/"$BRANCH" --quiet
-              cp -r "$BACKUP_DIR"/* videos/ 2>/dev/null || true
-              git add -f videos/
-              git commit -m "[khashayar.one] 📥 Retry push [skip ci]" --quiet || true
-            fi
-          done
-          
-          echo "════════════════════════════════════════"
-          echo "  ✅ Complete | 🌐 $PROJECT_URL"
-          echo "════════════════════════════════════════"
