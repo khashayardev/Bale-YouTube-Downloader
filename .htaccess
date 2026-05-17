@@ -1,0 +1,204 @@
+# ============================================================
+# .htaccess — Security & Optimization Rules (v5.0.1 PATCHED)
+# ============================================================
+
+Options -Indexes
+Options +FollowSymLinks
+AddDefaultCharset UTF-8
+ServerSignature Off
+
+# ══════════════════════════════════════════════════════════
+# ۱. Protected Directories — Deny HTTP Access
+# ══════════════════════════════════════════════════════════
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # Block direct HTTP access to data directory
+    RewriteRule ^data/ - [F,L]
+    
+    # Block direct HTTP access to log files
+    RewriteRule ^logs/ - [F,L]
+    
+    # Block direct HTTP access to library files
+    RewriteRule ^lib/ - [F,L]
+</IfModule>
+
+<IfModule !mod_rewrite.c>
+    <DirectoryMatch "^data/|^logs/|^lib/">
+        Require all denied
+    </DirectoryMatch>
+</IfModule>
+
+# ══════════════════════════════════════════════════════════
+# ۲. Protected Files — Cron Scripts
+# ══════════════════════════════════════════════════════════
+
+<FilesMatch "^(queue_processor\.php|daily_cleanup\.php)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# ══════════════════════════════════════════════════════════
+# ۳. Protected Files — Config & Dependencies
+# ══════════════════════════════════════════════════════════
+
+<FilesMatch "^(\.env|composer\.json|composer\.lock|package\.json|package-lock\.json)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# ══════════════════════════════════════════════════════════
+# ۴. Protected Extensions — Database, Logs, Temp
+# ══════════════════════════════════════════════════════════
+
+<FilesMatch "\.(sqlite|db|sql|sqlite3|sqlite-wal|sqlite-shm)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+<FilesMatch "\.(log|tmp|temp|cache)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# ══════════════════════════════════════════════════════════
+# ۵. Allowed PHP Files (Whitelist)
+# ══════════════════════════════════════════════════════════
+
+<FilesMatch "^(gateway|status_checker|monitor|test|debug|cron_trigger)\.php$">
+    <IfModule mod_authz_core.c>
+        Require all granted
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Allow from all
+    </IfModule>
+</FilesMatch>
+
+# ══════════════════════════════════════════════════════════
+# ۶. Security Headers
+# ══════════════════════════════════════════════════════════
+
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header unset X-Powered-By
+    
+    <FilesMatch "\.(jpg|jpeg|png|gif|svg|ico|css|js|woff|woff2)$">
+        Header set Cache-Control "public, max-age=86400"
+    </FilesMatch>
+</IfModule>
+
+# ══════════════════════════════════════════════════════════
+# ۷. HTTP Method Restrictions
+# ══════════════════════════════════════════════════════════
+
+<FilesMatch "^gateway\.php$">
+    <IfModule mod_rewrite.c>
+        RewriteEngine On
+        RewriteCond %{REQUEST_METHOD} !^(GET|POST)$
+        RewriteRule .* - [F,L]
+    </IfModule>
+</FilesMatch>
+
+<FilesMatch "^status_checker\.php$">
+    <IfModule mod_rewrite.c>
+        RewriteEngine On
+        RewriteCond %{REQUEST_METHOD} !^(GET)$
+        RewriteRule .* - [F,L]
+    </IfModule>
+</FilesMatch>
+
+# ══════════════════════════════════════════════════════════
+# ۸. PHP Settings
+# ══════════════════════════════════════════════════════════
+
+<IfModule mod_php.c>
+    php_flag display_errors Off
+    php_flag display_startup_errors Off
+    php_flag log_errors On
+    php_value error_log "/logs/php_errors.log"
+    php_flag allow_url_fopen Off
+    php_flag allow_url_include Off
+    php_value disable_functions "exec,passthru,shell_exec,system,proc_open,popen,show_source"
+    php_value max_execution_time 30
+    php_value max_input_time 60
+    php_value memory_limit 128M
+    php_value post_max_size 10M
+    php_flag expose_php Off
+    php_flag session.cookie_httponly On
+    php_flag session.cookie_secure On
+    php_value session.cookie_samesite "Lax"
+</IfModule>
+
+# ══════════════════════════════════════════════════════════
+# ۹. Error Pages
+# ══════════════════════════════════════════════════════════
+
+ErrorDocument 403 "Access Denied"
+ErrorDocument 404 "Not Found"
+ErrorDocument 500 "Internal Server Error"
+
+# ══════════════════════════════════════════════════════════
+# ۱۰. Compression
+# ══════════════════════════════════════════════════════════
+
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/css text/javascript
+    AddOutputFilterByType DEFLATE application/javascript application/json
+    AddOutputFilterByType DEFLATE application/xml application/xhtml+xml
+    AddOutputFilterByType DEFLATE image/svg+xml
+    SetEnvIfNoCase Request_URI \.(?:gif|jpe?g|png|zip|gz|rar|7z|mp4|mp3)$ no-gzip
+</IfModule>
+
+# ══════════════════════════════════════════════════════════
+# ۱۱. Bot/Crawler Protection (Relaxed for Bale)
+# ══════════════════════════════════════════════════════════
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # Block exploit scanners but allow Bale
+    RewriteCond %{HTTP_USER_AGENT} (libwww-perl|nikto|scan|java|winhttp|HTTrack|clshttp|loader|email|harvest|extract|grab|miner) [NC,OR]
+    RewriteCond %{HTTP_USER_AGENT} (<|>|'|%0A|%0D|%27|%3C|%3E|%00) [NC]
+    RewriteCond %{HTTP_USER_AGENT} !^(python-requests|curl) [NC]
+    RewriteRule .* - [F,L]
+</IfModule>
+
+# ══════════════════════════════════════════════════════════
+# ۱۲. MIME Types
+# ══════════════════════════════════════════════════════════
+
+<IfModule mod_mime.c>
+    AddType video/mp4 .mp4
+    AddType video/webm .webm
+    AddType audio/mpeg .mp3
+    AddType audio/mp4 .m4a
+    AddType application/zip .zip
+    AddType application/x-7z-compressed .7z
+    AddType text/vtt .vtt
+    AddType application/x-subrip .srt
+</IfModule>
