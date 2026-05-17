@@ -132,7 +132,10 @@ class GitHubClient
         string $youtubeUrl,
         string $quality = 'best',
         bool $downloadSubtitles = false,
-        string $password = ''
+        string $password = '',
+        string $chatId = '',
+        string $channelId = '',
+        string $channelUsername = ''
     ): array {
         $url = "{$this->apiBase}/actions/workflows/" . WORKFLOW_DOWNLOAD . "/dispatches";
 
@@ -143,6 +146,9 @@ class GitHubClient
                 'quality'            => $quality,
                 'download_subtitles' => $downloadSubtitles ? 'true' : 'false',
                 'password'           => $password,
+                'chat_id'            => $chatId,
+                'channel_id'         => $channelId,
+                'channel_username'   => $channelUsername,
             ],
         ];
 
@@ -168,7 +174,7 @@ class GitHubClient
      */
     public function dispatchSearch(
         string $query,
-        string $chatId,
+        string|int $chatId,
         int $maxResults = 5
     ): array {
         $url = "{$this->apiBase}/actions/workflows/" . WORKFLOW_SEARCH . "/dispatches";
@@ -177,7 +183,7 @@ class GitHubClient
             'ref'    => $this->ref,
             'inputs' => [
                 'query'       => $query,
-                'chat_id'     => $chatId,
+                'chat_id' => (string) $chatId,
                 'max_results' => (string) min(10, max(1, $maxResults)),
             ],
         ];
