@@ -43,6 +43,11 @@ on:
         required: false
         type: string
         default: ""
+      channel_id:
+        description: "📢 Channel ID for archiving"
+        required: false
+        type: string
+        default: ""
 
 env:
   PROJECT_NAME: "Khashayar Downloader"
@@ -507,11 +512,11 @@ jobs:
       # ═══════════════════════════════════════════════════════════════════
       # 🆕 NEW STEP 1: Upload parts to Bale channel (Archive)
       # ═══════════════════════════════════════════════════════════════════
-      - name: "📤 Upload parts to Bale channel (Archive)"
-        if: env.CHANNEL_ID != ''
+      - name: "📤 Upload to User's Channel"
+        if: github.event.inputs.channel_id != ''
         env:
           BALE_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
-          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+          CHANNEL_ID: ${{ github.event.inputs.channel_id }}
         run: |
           #!/bin/bash
           BACKUP_DIR="${{ env.BACKUP_DIR }}"
@@ -530,10 +535,14 @@ jobs:
             # Store file_id for each file in this folder
             declare -A FILE_IDS
             
-            # Upload each file in this folder
             for FILE in "$FOLDER_PATH"/*; do
               [ -f "$FILE" ] || continue
               FILENAME=$(basename "$FILE")
+              
+              # Skip non-media files (README, thumbnails, JSON, etc.)
+              [[ "$FILENAME" == *.md ]] || [[ "$FILENAME" == *.json ]] || [[ "$FILENAME" == *.txt ]] && continue
+              [[ "$FILENAME" == *.jpg ]] || [[ "$FILENAME" == *.jpeg ]] || [[ "$FILENAME" == *.png ]] || [[ "$FILENAME" == *.webp ]] && continue
+              
               echo "  📄 Uploading: $FILENAME"
               
               # Send document to channel
@@ -647,7 +656,7 @@ jobs:
       # 🆕 NEW STEP 3: Notify user with download buttons
       # ═══════════════════════════════════════════════════════════════════
       - name: "📬 Notify User"
-        if: env.CHANNEL_ID != '' && github.event.inputs.chat_id != ''
+        if: github.event.inputs.chat_id != ''
         env:
           BALE_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
           CHAT_ID: ${{ github.event.inputs.chat_id }}
