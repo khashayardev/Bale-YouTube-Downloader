@@ -33,8 +33,12 @@
  *   • Retry: max 3 attempts with 5-minute delay
  *   • Batch processing: respects GitHub rate limits
  * 
+ * 🔧 PATCHED v5.0.1: All chatId params accept string|int
+ *   Reason: Bale sends chat_id as integer (e.g. 241726352) but strict_types=1
+ *   requires exact type match. Using union type string|int fixes the TypeError.
+ * 
  * @package     KhashayarDownloader
- * @version     5.0.0
+ * @version     5.0.1
  * @author      Khashayar
  * @license     MIT
  * @since       2026-05-16
@@ -111,14 +115,14 @@ class QueueManager
     /**
      * Add a download job to the queue
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @param string $youtubeUrl YouTube URL to download
      * @param string $quality Quality setting
      * @param bool $subtitles Whether to include subtitles
      * @return array{success: bool, position: int, estimated_wait: int, message: string}
      */
     public function addToQueue(
-        string $chatId,
+        string|int $chatId,
         string $youtubeUrl,
         string $quality = 'best',
         bool $subtitles = false
@@ -231,11 +235,11 @@ class QueueManager
     /**
      * Check if user already has this URL pending
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @param string $youtubeUrl YouTube URL
      * @return bool True if duplicate exists
      */
-    private function isDuplicate(string $chatId, string $youtubeUrl): bool
+    private function isDuplicate(string|int $chatId, string $youtubeUrl): bool
     {
         $count = $this->db->fetchValue(
             "SELECT COUNT(*) FROM pending_queue 
@@ -408,8 +412,16 @@ class QueueManager
             ]
         );
 
+        // Get user's channel ID from database
+        $userChannel = $this->db->fetchOne(
+            "SELECT channel_id, channel_username FROM user_channels WHERE chat_id = :chat_id AND is_active = 1",
+            ['chat_id' => $chatId]
+        );
+        $channelId = $userChannel['channel_id'] ?? '';
+        $channelUsername = $userChannel['channel_username'] ?? '';
+
         // Dispatch to GitHub
-        $result = $this->github->dispatchDownload($youtubeUrl, $quality, $subtitles);
+        $result = $this->github->dispatchDownload($youtubeUrl, $quality, $subtitles, '', (string) $chatId, $channelId, $channelUsername);
 
         if ($result['success']) {
             // Try to get run ID from response (may not be available immediately)
@@ -428,7 +440,11 @@ class QueueManager
             );
 
             // Notify user their download started
-            BaleNotifier::notifyDownloadStarted($chatId, $youtubeUrl);
+            BaleNotifier::sendMessage(
+                $chatId,
+                "🚀 *دانلود شما شروع شد!*\n\n⏱ *زمان تقریبی:* ۲ تا ۵ دقیقه\n\n👇 برای بررسی وضعیت، دکمه زیر را بزنید:",
+                BaleNotifier::statusCheckKeyboard()
+            );
 
             // Update notification flag
             $this->db->execute(
@@ -561,10 +577,10 @@ class QueueManager
      * Mark a job as completed
      * 
      * @param int $jobId Job ID
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @return void
      */
-    private function markJobCompleted(int $jobId, string $chatId): void
+    private function markJobCompleted(int $jobId, string|int $chatId): void
     {
         $this->db->execute(
             "UPDATE pending_queue SET status = 'completed', completed_at = :time WHERE id = :id",
@@ -586,11 +602,10 @@ class QueueManager
         );
 
         if ($job && !$this->isAlreadyNotifiedDone($jobId)) {
-            BaleNotifier::notifyDownloadComplete(
+            BaleNotifier::sendMessage(
                 $chatId,
-                'فایل دانلود شده', // Will be updated with actual filename
-                0, // Will be updated with actual size
-                null
+                "✅ *دانلود شما کامل شد!*\n\n📁 فایل در کانال آرشیو ذخیره شده است.\n\n🔄 برای دریافت فایل، دکمه بررسی وضعیت را بزنید.",
+                ['inline_keyboard' => [[['text' => '🔄 بررسی وضعیت', 'callback_data' => 'check_status']]]]
             );
 
             $this->db->execute(
@@ -606,11 +621,11 @@ class QueueManager
      * Mark a job as failed
      * 
      * @param int $jobId Job ID
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @param string $reason Failure reason
      * @return void
      */
-    private function markJobFailed(int $jobId, string $chatId, string $reason): void
+    private function markJobFailed(int $jobId, string|int $chatId, string $reason): void
     {
         $this->db->execute(
             "UPDATE pending_queue SET status = 'failed', error_message = :reason, completed_at = :time WHERE id = :id",
@@ -734,10 +749,10 @@ class QueueManager
     /**
      * Get user's pending job count
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @return int Number of pending jobs
      */
-    public function getUserPendingCount(string $chatId): int
+    public function getUserPendingCount(string|int $chatId): int
     {
         $count = $this->db->fetchValue(
             "SELECT COUNT(*) FROM pending_queue 
@@ -751,10 +766,10 @@ class QueueManager
     /**
      * Get user's job status
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @return array|null Job status info or null
      */
-    public function getUserJobStatus(string $chatId): ?array
+    public function getUserJobStatus(string|int $chatId): ?array
     {
         return $this->db->fetchOne(
             "SELECT id, status, youtube_url, quality, created_at, 
