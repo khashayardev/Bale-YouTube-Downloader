@@ -1,0 +1,28 @@
+# Becky-G-Guaynaa-Tajin-Music-Video-ft-Iskander-Dany-Deglein-y-M-s
+
+<div align="center"><img src="https://github.com/khashayardev/youtube-downloader-template-v2/raw/main/videos/Becky-G-Guaynaa-Tajin-Music-Video-ft-Iskander-Dany-Deglein-y-M-s/thumbnail.jpg" alt="Thumbnail" width="400" /></div>
+
+<br>
+
+---
+
+## 📋 Video Information
+
+| Property | Value |
+|----------|-------|
+| **Title** | `Becky-G-Guaynaa-Tajin-Music-Video-ft-Iskander-Dany-Deglein-y-M-s` |
+| **Source** | [YouTube](https://www.youtube.com/watch?v=dF2tSIawUb0) |
+| **Quality** | best |
+| **Status** | ✅ Complete |
+| **Password** | ❌ No |
+
+---
+
+## 📥 Download
+
+> ⚠️ This file will be automatically deleted **5 minutes** after download.
+> 📦 Download **all parts**, then open the main `.zip` file.
+
+---
+
+*Downloaded via [khashayar.one](https://khashayar.one)*
