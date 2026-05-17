@@ -27,8 +27,12 @@
  *   • File size validation before sending
  *   • Callback data safety (length validation)
  * 
- * @package     KhashayarDownloader
- * @version     5.0.0
+ * 🔧 PATCHED v5.0.1: All chatId params accept string|int
+ *   Reason: Bale sends chat_id as integer (e.g. 241726352) but strict_types=1
+ *   requires exact type match. Using union type string|int fixes the TypeError.
+ * 
+ * @package     https://github.com/khashayardev/Bale-YouTube-Downloader
+ * @version     5.0.1
  * @author      Khashayar
  * @license     MIT
  * @since       2026-05-16
@@ -226,12 +230,12 @@ class BaleNotifier
     /**
      * Send a text message to a chat
      * 
-     * @param string $chatId Target chat ID
+     * @param string|int $chatId Target chat ID
      * @param string $text Message text (Markdown supported)
      * @param array|null $replyMarkup Inline keyboard or reply keyboard
      * @return bool True if sent successfully
      */
-    public static function sendMessage(string $chatId, string $text, ?array $replyMarkup = null): bool
+    public static function sendMessage(string|int $chatId, string $text, ?array $replyMarkup = null): bool
     {
         $params = [
             'chat_id'    => $chatId,
@@ -259,14 +263,14 @@ class BaleNotifier
     /**
      * Send a document/file to a chat
      * 
-     * @param string $chatId Target chat ID
+     * @param string|int $chatId Target chat ID
      * @param string $filePath Full path to file
      * @param string $caption Optional caption
      * @param array|null $replyMarkup Optional inline keyboard
      * @return bool True if sent successfully
      */
     public static function sendDocument(
-        string $chatId, 
+        string|int $chatId, 
         string $filePath, 
         string $caption = '', 
         ?array $replyMarkup = null
@@ -320,12 +324,12 @@ class BaleNotifier
     /**
      * Send a file using file_id (from channel archive)
      * 
-     * @param string $chatId Target chat ID
+     * @param string|int $chatId Target chat ID
      * @param string $fileId Bale file ID
      * @param string $caption Optional caption
      * @return bool True if sent successfully
      */
-    public static function sendFileById(string $chatId, string $fileId, string $caption = ''): bool
+    public static function sendFileById(string|int $chatId, string $fileId, string $caption = ''): bool
     {
         $params = [
             'chat_id'  => $chatId,
@@ -350,14 +354,14 @@ class BaleNotifier
     /**
      * Edit an existing message text
      * 
-     * @param string $chatId Chat ID
+     * @param string|int $chatId Chat ID
      * @param int $messageId Message ID to edit
      * @param string $text New text
      * @param array|null $replyMarkup New inline keyboard (optional)
      * @return bool True if edited successfully
      */
     public static function editMessage(
-        string $chatId, 
+        string|int $chatId, 
         int $messageId, 
         string $text, 
         ?array $replyMarkup = null
@@ -421,11 +425,11 @@ class BaleNotifier
     /**
      * Delete a message
      * 
-     * @param string $chatId Chat ID
+     * @param string|int $chatId Chat ID
      * @param int $messageId Message ID to delete
      * @return bool True if deleted
      */
-    public static function deleteMessage(string $chatId, int $messageId): bool
+    public static function deleteMessage(string|int $chatId, int $messageId): bool
     {
         $response = self::callAPI('deleteMessage', [
             'chat_id'    => $chatId,
@@ -433,6 +437,90 @@ class BaleNotifier
         ]);
 
         return self::isSuccess($response);
+    }
+
+    /**
+     * Check if user is member/admin of a channel
+     * Tries getChatMember first, falls back to getChatAdministrators
+     * 
+     * @param string $channelUsername Channel username (e.g. @GeminiPrompt)
+     * @param string|int $userId User ID to check
+     * @return array{is_member: bool, status: string}
+     */
+    public static function getChatMember(string $channelUsername, string|int $userId): array
+    {
+        // Method 1: Try getChatMember (works if bot is member)
+        $response = self::callAPI('getChatMember', [
+            'chat_id' => $channelUsername,
+            'user_id' => $userId,
+        ]);
+
+        if (self::isSuccess($response)) {
+            $status = $response['body']['result']['status'] ?? 'unknown';
+            $isMember = in_array($status, ['member', 'administrator', 'creator']);
+            return ['is_member' => $isMember, 'status' => $status];
+        }
+
+        // Method 2: Fallback — check administrators list
+        // (works if bot is admin but not member)
+        $admins = self::getChatAdministrators($channelUsername);
+        
+        foreach ($admins as $admin) {
+            $adminId = $admin['user']['id'] ?? null;
+            if ($adminId && (string) $adminId === (string) $userId) {
+                return ['is_member' => true, 'status' => 'administrator'];
+            }
+        }
+
+        Logger::debug('Failed to verify membership', [
+            'channel' => $channelUsername,
+            'user_id' => $userId,
+        ]);
+        
+        return ['is_member' => false, 'status' => 'unknown'];
+    }
+
+    /**
+     * Get list of administrators in a channel
+     * 
+     * @param string|int $chatId Channel ID or username
+     * @return array<int, array> Array of admin user objects
+     */
+    public static function getChatAdministrators(string|int $chatId): array
+    {
+        $response = self::callAPI('getChatAdministrators', [
+            'chat_id' => $chatId,
+        ]);
+
+        if (!self::isSuccess($response)) {
+            Logger::debug('Failed to get chat administrators', [
+                'chat_id' => $chatId,
+            ]);
+            return [];
+        }
+
+        return $response['body']['result'] ?? [];
+    }
+
+    /**
+     * Check if a user is admin in a channel
+     * 
+     * @param string|int $channelId Channel ID or username
+     * @param string|int $botUserId Bot's user ID
+     * @return bool True if bot is admin
+     */
+    public static function isBotAdmin(string|int $channelId, string|int $botUserId): bool
+    {
+        $admins = self::getChatAdministrators($channelId);
+
+        foreach ($admins as $admin) {
+            $adminId = $admin['user']['id'] ?? null;
+            if ($adminId && (string) $adminId === (string) $botUserId) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -450,14 +538,44 @@ class BaleNotifier
     {
         return [
             'keyboard' => [
-                [['text' => '🎥 دانلود ویدیو'], ['text' => '🔍 جستجوی یوتیوب']],
+                [['text' => '📥 دانلودر یوتوب'], ['text' => '🔍 سرچ یوتوب']],
                 [['text' => '⚙️ تنظیمات'], ['text' => 'ℹ️ راهنما']],
-                [['text' => '📊 وضعیت سرور']],
+                [['text' => '📊 وضعیت سرور'], ['text' => '🔄 بروزرسانی کانال']],
             ],
             'resize_keyboard' => true,
             'persistent'      => true,
         ];
     }
+
+    /**
+     * Create force join keyboard
+     * 
+     * @return array<string, mixed> Inline keyboard markup
+     */
+    public static function forceJoinKeyboard(): array
+    {
+        return [
+            'inline_keyboard' => [
+                [['text' => '📢 عضویت در کانال', 'url' => FORCE_JOIN_CHANNEL_URL]],
+                [['text' => '✅ بررسی عضویت', 'callback_data' => 'check_join']],
+            ],
+        ];
+    }
+
+    /**
+     * Create update channel keyboard
+     * 
+     * @return array<string, mixed> Inline keyboard markup
+     */
+    public static function updateChannelKeyboard(): array
+    {
+        return [
+            'inline_keyboard' => [
+                [['text' => '🔄 بروزرسانی کانال آرشیو', 'callback_data' => 'update_channel']],
+            ],
+        ];
+    }
+
 
     /**
      * Create inline start menu
@@ -469,8 +587,8 @@ class BaleNotifier
         return [
             'inline_keyboard' => [
                 [
-                    ['text' => '🎥 دانلود ویدیو', 'callback_data' => 'menu_download'],
-                    ['text' => '🔍 جستجوی یوتیوب', 'callback_data' => 'menu_search'],
+                    ['text' => '📥 دانلودر یوتوب', 'callback_data' => 'menu_download'],
+                    ['text' => '🔍 سرچ یوتوب', 'callback_data' => 'menu_search'],
                 ],
                 [
                     ['text' => '⚙️ تنظیمات', 'callback_data' => 'menu_settings'],
@@ -478,6 +596,7 @@ class BaleNotifier
                 ],
                 [
                     ['text' => '📊 وضعیت سرور', 'callback_data' => 'menu_status'],
+                    ['text' => '🔄 بروزرسانی کانال', 'callback_data' => 'update_channel'],
                 ],
             ],
         ];
@@ -620,12 +739,12 @@ class BaleNotifier
     /**
      * Notify user they are in queue
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @param int $position Queue position
      * @param int $estimatedWaitSeconds Estimated wait time
      * @return bool True if sent
      */
-    public static function notifyQueuePosition(string $chatId, int $position, int $estimatedWaitSeconds): bool
+    public static function notifyQueuePosition(string|int $chatId, int $position, int $estimatedWaitSeconds): bool
     {
         $waitStr = self::formatWaitTime($estimatedWaitSeconds);
         
@@ -641,11 +760,11 @@ class BaleNotifier
     /**
      * Notify user their download has started
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @param string $youtubeUrl YouTube URL being downloaded
      * @return bool True if sent
      */
-    public static function notifyDownloadStarted(string $chatId, string $youtubeUrl): bool
+    public static function notifyDownloadStarted(string|int $chatId, string $youtubeUrl): bool
     {
         $text = "🚀 *دانلود شما شروع شد!*\n\n";
         $text .= "🔗 `" . substr($youtubeUrl, 0, 50) . "...`\n\n";
@@ -658,14 +777,14 @@ class BaleNotifier
     /**
      * Notify user their download is complete (with file)
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @param string $fileName Downloaded file name
      * @param int $fileSizeMB File size in MB
      * @param array|null $downloadKeyboard File download buttons
      * @return bool True if sent
      */
     public static function notifyDownloadComplete(
-        string $chatId, 
+        string|int $chatId, 
         string $fileName, 
         int $fileSizeMB,
         ?array $downloadKeyboard = null
@@ -682,11 +801,11 @@ class BaleNotifier
     /**
      * Notify user their download failed
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @param string $reason Failure reason
      * @return bool True if sent
      */
-    public static function notifyDownloadFailed(string $chatId, string $reason): bool
+    public static function notifyDownloadFailed(string|int $chatId, string $reason): bool
     {
         $text = "❌ *دانلود ناموفق بود*\n\n";
         $text .= "⚠️ *علت:* {$reason}\n\n";
@@ -699,11 +818,11 @@ class BaleNotifier
     /**
      * Notify user about rate limit
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @param int $remainingSeconds Seconds remaining
      * @return bool True if sent
      */
-    public static function notifyRateLimited(string $chatId, int $remainingSeconds): bool
+    public static function notifyRateLimited(string|int $chatId, int $remainingSeconds): bool
     {
         $waitStr = self::formatWaitTime($remainingSeconds);
         
@@ -717,10 +836,10 @@ class BaleNotifier
     /**
      * Notify user about daily limit reached
      * 
-     * @param string $chatId User's chat ID
+     * @param string|int $chatId User's chat ID
      * @return bool True if sent
      */
-    public static function notifyDailyLimitReached(string $chatId): bool
+    public static function notifyDailyLimitReached(string|int $chatId): bool
     {
         $text = "📊 *محدودیت روزانه*\n\n";
         $text .= "شما به حداکثر تعداد دانلود مجاز امروز رسیده‌اید.\n\n";
@@ -741,7 +860,7 @@ class BaleNotifier
      * @param int $seconds Seconds to format
      * @return string Formatted string
      */
-    private static function formatWaitTime(int $seconds): string
+    public static function formatWaitTime(int $seconds): string
     {
         if ($seconds <= 0) {
             return 'آماده ✅';
