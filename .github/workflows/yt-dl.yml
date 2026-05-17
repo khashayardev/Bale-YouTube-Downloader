@@ -63,8 +63,6 @@ jobs:
   download:
     name: "⬇️ Download & Store"
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/khashayardev/yt-downloader:latest
     timeout-minutes: 180
     permissions:
       contents: read
@@ -78,10 +76,17 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      # ── Step 2.5: Install Docker (for WARP) ────────────
-      - name: "🐳 Install Docker"
+      # ── Step 2: Git Config ────────────────────────────
+      - name: "⚙️ Configure Git"
         run: |
-          apt-get update -qq && apt-get install -y -qq docker.io
+          git config --global http.postBuffer 524288000
+          git config --global http.maxRequestBuffer 100M
+          git config --global core.compression 0
+          git config --global pack.windowMemory 256m
+          git config --global pack.packSizeLimit 100m
+          git config --global pack.threads 1
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
       # ── Step 3: Cloudflare WARP ───────────────────────
       - name: "🌐 Setup Cloudflare WARP"
@@ -100,10 +105,21 @@ jobs:
             if echo "$RESULT" | grep -qE "warp=(on|plus)"; then echo "✅ WARP active!"; break; else sleep 5; fi
           done
 
+      # ── Step 4: Dependencies ───────────────────────────
+      - name: "📦 Install Dependencies"
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pip ffmpeg zip p7zip-full curl jq bc unzip
+          curl -fsSL https://deno.land/install.sh | sh
+          export DENO_INSTALL="$HOME/.deno"
+          export PATH="$DENO_INSTALL/bin:$PATH"
+          echo "$DENO_INSTALL/bin" >> $GITHUB_PATH
+          deno --version
+          pip3 install --upgrade yt-dlp --quiet
+
       # ── Step 5: Setup Parameters ──────────────────────
       - name: "🔧 Setup Download Parameters"
         id: setup
-        shell: bash
         env:
           YT_URLS: ${{ github.event.inputs.youtube_urls }}
           YT_QUALITY: ${{ github.event.inputs.quality }}
@@ -152,7 +168,6 @@ jobs:
       # ── Step 6: Download & Process Videos ──────────────
       - name: "⬇️ Download & Process Videos"
         id: download
-        shell: bash
         run: |
           #!/bin/bash
           set -e
@@ -397,7 +412,6 @@ jobs:
       # ── Step 7: Subtitles (if enabled) ─────────────────
       - name: "📝 Download Subtitles"
         if: ${{ github.event.inputs.download_subtitles == 'true' }}
-        shell: bash
         run: |
           #!/bin/bash
           set +e
