@@ -105,6 +105,18 @@ define('BALE_API_MAX_RETRIES', 2);
 
 /**
  * ============================================================
+ * Force Join Configuration
+ * ============================================================
+ */
+
+/** @var string Channel ID for forced join */
+define('FORCE_JOIN_CHANNEL_ID', '4554015101');
+
+/** @var string Channel URL for join button */
+define('FORCE_JOIN_CHANNEL_URL', 'https://ble.ir/GeminiPrompt');
+
+/**
+ * ============================================================
  * GitHub Configuration
  * ============================================================
  */
