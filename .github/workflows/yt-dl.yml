@@ -48,6 +48,11 @@ on:
         required: false
         type: string
         default: ""
+      channel_username:
+        description: "📢 Channel Username"
+        required: false
+        type: string
+        default: ""
 
 env:
   PROJECT_NAME: "Khashayar Downloader"
@@ -661,6 +666,7 @@ jobs:
           BALE_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
           CHAT_ID: ${{ github.event.inputs.chat_id }}
           CHANNEL_ID: ${{ github.event.inputs.channel_id }}
+          CHANNEL_USERNAME: ${{ github.event.inputs.channel_username }}
         run: |
           #!/bin/bash
           
@@ -668,7 +674,12 @@ jobs:
           echo "📢 Channel ID: $CHANNEL_ID"
           
           # ساخت دکمه شیشه‌ای با لینک کانال کاربر
-          if [ -n "$CHANNEL_ID" ]; then
+          if [ -n "$CHANNEL_USERNAME" ]; then
+            CHANNEL_LINK="https://ble.ir/$CHANNEL_USERNAME"
+            KEYBOARD=$(jq -n \
+              --arg url "$CHANNEL_LINK" \
+              '{inline_keyboard: [[{text: "📂 مشاهده و دریافت فایل", url: $url}]]}')
+          elif [ -n "$CHANNEL_ID" ]; then
             CHANNEL_LINK="https://ble.ir/im/p/$CHANNEL_ID"
             KEYBOARD=$(jq -n \
               --arg url "$CHANNEL_LINK" \
