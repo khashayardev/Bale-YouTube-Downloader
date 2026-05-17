@@ -103,6 +103,7 @@ jobs:
       # ── Step 5: Setup Parameters ──────────────────────
       - name: "🔧 Setup Download Parameters"
         id: setup
+        shell: bash
         env:
           YT_URLS: ${{ github.event.inputs.youtube_urls }}
           YT_QUALITY: ${{ github.event.inputs.quality }}
@@ -151,6 +152,7 @@ jobs:
       # ── Step 6: Download & Process Videos ──────────────
       - name: "⬇️ Download & Process Videos"
         id: download
+        shell: bash
         run: |
           #!/bin/bash
           set -e
@@ -395,6 +397,7 @@ jobs:
       # ── Step 7: Subtitles (if enabled) ─────────────────
       - name: "📝 Download Subtitles"
         if: ${{ github.event.inputs.download_subtitles == 'true' }}
+        shell: bash
         run: |
           #!/bin/bash
           set +e
