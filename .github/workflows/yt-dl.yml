@@ -74,7 +74,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
+          fetch-depth: 1
 
       # ── Step 2: Git Config ────────────────────────────
       - name: "⚙️ Configure Git"
