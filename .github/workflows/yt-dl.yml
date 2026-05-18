@@ -382,7 +382,7 @@ jobs:
                 if [ -n "$ZIP_PASSWORD" ]; then
                   cd "$(dirname "$FILE")" && 7z a -tzip -v${SPLIT_SIZE_MB}m -p"${ZIP_PASSWORD}" -mx=0 "$FINAL_PATH/$FINAL_FOLDER.zip" "$(basename "$FILE")" > /dev/null 2>&1
                 else
-                  cd "$(dirname "$FILE")" && zip -0 -j -s ${SPLIT_SIZE_MB}m "$FINAL_PATH/$FINAL_FOLDER.zip" "$(basename "$FILE")" > /dev/null 2>&1
+                  cd "$(dirname "$FILE")" && 7z a -tzip -v${SPLIT_SIZE_MB}m -mx=0 "$FINAL_PATH/$FINAL_FOLDER.zip" "$(basename "$FILE")" > /dev/null 2>&1
                 fi
                 generate_readme "$FINAL_PATH" "$FILENAME_NO_EXT" "$URL" "$QUALITY" "split" "$ZIP_PASSWORD" "$FOLDER_ENCODED" "$REPO_OWNER" "$REPO_NAME" "$BRANCH"
               else
@@ -673,9 +673,12 @@ jobs:
             KEYBOARD='{"inline_keyboard": []}'
           fi
           
+          # 🆕 متن با newline واقعی
+          TEXT=$'✅ *دانلود شما کامل شد!*\n\n📁 فایل در کانال آرشیو شما ذخیره شد.\n\n👇 برای مشاهده و دریافت فایل روی دکمه زیر کلیک کنید:'
+          
           jq -n \
             --arg chat_id "$CHAT_ID" \
-            --arg text "✅ *دانلود شما کامل شد!*\n\n📁 فایل در کانال آرشیو شما ذخیره شد.\n\n👇 برای مشاهده و دریافت فایل روی دکمه زیر کلیک کنید:" \
+            --arg text "$TEXT" \
             --argjson reply_markup "$KEYBOARD" \
             '{chat_id: $chat_id, text: $text, parse_mode: "Markdown", reply_markup: $reply_markup}' \
             > /tmp/notify.json
