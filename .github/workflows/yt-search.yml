@@ -177,6 +177,8 @@ jobs:
             fi
           }
           
+          RESULTS_FILE="/tmp/search_results.json"
+          
           # ═══════════════════════════════════════════════
           # Build yt-dlp command flags
           # ═══════════════════════════════════════════════
