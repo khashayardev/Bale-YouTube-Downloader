@@ -178,25 +178,6 @@ jobs:
           }
           
           # ═══════════════════════════════════════════════
-          # Initial "Searching..." Message
-          # ═══════════════════════════════════════════════
-          
-          FILTER_DESC=""
-          [ "$DURATION_FILTER" != "any" ] && FILTER_DESC="${FILTER_DESC}▫️ مدت: ${DURATION_FILTER}\\n"
-          [ "$DATE_FILTER" != "any" ] && FILTER_DESC="${FILTER_DESC}▫️ بازه: ${DATE_FILTER}\\n"
-          [ "$LIVE_FILTER" = "true" ] && FILTER_DESC="${FILTER_DESC}▫️ فقط لایو 🔴\\n"
-          [ "$SEARCH_TYPE" = "playlist" ] && FILTER_DESC="${FILTER_DESC}▫️ نوع: playlist 📋\\n"
-          
-          send_message "🔍 *در حال جستجو...*
-
-          ▫️ عبارت: \`${QUERY}\`
-          ▫️ در حال بررسی ${MAX_RESULTS} نتیجه برتر
-          ${FILTER_DESC}
-          ⏳ _لطفاً چند لحظه صبر کنید..._"
-          
-          RESULTS_FILE="/tmp/search_results.json"
-          
-          # ═══════════════════════════════════════════════
           # Build yt-dlp command flags
           # ═══════════════════════════════════════════════
           
@@ -301,19 +282,13 @@ jobs:
           # ═══════════════════════════════════════════════
           
           HEADER="🔍 *نتایج جستجو برای:* \`${QUERY}\`
-          ▫️ *صفحه:* ${PAGE}
-          ▫️ *نوع:* ${TYPE_LABEL}
-          ▫️ *مرتب‌سازی:* ${SORT_BY}"
-          
-          [ "$DURATION_FILTER" != "any" ] && HEADER="${HEADER}
-          ▫️ *مدت:* ${DURATION_FILTER}"
-          [ "$DATE_FILTER" != "any" ] && HEADER="${HEADER}
-          ▫️ *بازه:* ${DATE_FILTER}"
-          [ "$LIVE_FILTER" = "true" ] && HEADER="${HEADER}
-          ▫️ *فقط لایو 🔴*"
-          
-          HEADER="${HEADER}
+          ▫️ *صفحه:* ${PAGE} | *نوع:* ${TYPE_LABEL}
           ▫️ *تعداد نتایج:* ${RESULT_COUNT} ${TYPE_LABEL}"
+          
+          [ "$DURATION_FILTER" != "any" ] && HEADER="${HEADER}\n▫️ *مدت:* ${DURATION_FILTER}"
+          [ "$DATE_FILTER" != "any" ] && HEADER="${HEADER}\n▫️ *بازه:* ${DATE_FILTER}"
+          [ "$LIVE_FILTER" = "true" ] && HEADER="${HEADER}\n▫️ *فقط لایو 🔴*"
+          [ "$SORT_BY" != "relevance" ] && HEADER="${HEADER}\n▫️ *مرتب‌سازی:* ${SORT_BY}"
           
           send_message "$HEADER"
           
