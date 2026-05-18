@@ -170,6 +170,7 @@ jobs:
         id: download
         run: |
           #!/bin/bash
+          shopt -s nullglob
           set -e
           
           BACKUP_DIR="${{ env.BACKUP_DIR }}"
@@ -363,6 +364,14 @@ jobs:
               EXT="${BASENAME##*.}"
               
               set +e; FILENAME_NO_EXT=$(sanitize_name "$FILENAME_NO_EXT"); set -e
+              
+              # 🆕 Rename file to safe name before zipping
+              SAFE_FILE="${FILENAME_NO_EXT}.${EXT}"
+              if [ "$BASENAME" != "$SAFE_FILE" ]; then
+                cp "$FILE" "$TMP_DIR/$SAFE_FILE"
+                FILE="$TMP_DIR/$SAFE_FILE"
+                echo "  📝 Renamed to: $SAFE_FILE"
+              fi
               
               echo "  📦 $BASENAME ($(( SIZE / 1024 / 1024 ))MB)"
               
@@ -558,9 +567,17 @@ jobs:
                 echo "    ❌ Upload failed: $RESPONSE"
               fi
               
-              # Small delay to avoid hitting rate limits
-              sleep 5
             done
+            
+            # Small delay to avoid hitting rate limits — based on file count
+            FILE_COUNT_IN_FOLDER=${#FILE_IDS[@]}
+            if [ "$FILE_COUNT_IN_FOLDER" -le 2 ]; then
+              sleep 3
+            elif [ "$FILE_COUNT_IN_FOLDER" -le 5 ]; then
+              sleep 5
+            else
+              sleep 7
+            fi
             
             # Save file_ids for this folder
             if [ ${#FILE_IDS[@]} -gt 0 ]; then
