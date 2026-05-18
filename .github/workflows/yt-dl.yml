@@ -188,7 +188,11 @@ jobs:
           # ⭐ Robust sanitize — no sed errors
           sanitize_name() {
             local name="$1"
-            name=$(echo "$name" | LC_ALL=C tr '[:space:]｜　' '---' | LC_ALL=C tr -c 'a-zA-Z0-9_-' '-' | tr -s '-' | sed 's/^-//;s/-$//')
+            # حذف کاراکترهای مشکل‌ساز برای اسم فایل
+            name=$(echo "$name" | sed 's/[()（）]/_/g' | sed 's/[][{}\/\\<>|:;'"'"'"]/_/g')
+            # تبدیل فاصله و کاراکترهای خاص به خط‌تیره
+            name=$(echo "$name" | tr '[:space:]｜　' '-' | tr -c 'a-zA-Z0-9_-' '-' | tr -s '-' | sed 's/^-//;s/-$//')
+            # اگه بعد از sanitize خالی شد
             [ -z "$name" ] && name="video"
             echo "$name"
           }
