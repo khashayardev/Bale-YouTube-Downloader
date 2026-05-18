@@ -380,18 +380,18 @@ jobs:
               if [ "$SIZE" -gt "$SPLIT_BYTES" ]; then
                 echo "  📦 Splitting (${SPLIT_SIZE_MB}MB parts)..."
                 if [ -n "$ZIP_PASSWORD" ]; then
-                  7z a -tzip -v${SPLIT_SIZE_MB}m -p"${ZIP_PASSWORD}" -mx=0 "$FINAL_PATH/$FINAL_FOLDER.zip" "$FILE" > /dev/null 2>&1
+                  cd "$(dirname "$FILE")" && 7z a -tzip -v${SPLIT_SIZE_MB}m -p"${ZIP_PASSWORD}" -mx=0 "$FINAL_PATH/$FINAL_FOLDER.zip" "$(basename "$FILE")" > /dev/null 2>&1
                 else
-                  zip -0 -s ${SPLIT_SIZE_MB}m "$FINAL_PATH/$FINAL_FOLDER.zip" "$FILE" > /dev/null 2>&1
+                  cd "$(dirname "$FILE")" && zip -0 -j -s ${SPLIT_SIZE_MB}m "$FINAL_PATH/$FINAL_FOLDER.zip" "$(basename "$FILE")" > /dev/null 2>&1
                 fi
                 generate_readme "$FINAL_PATH" "$FILENAME_NO_EXT" "$URL" "$QUALITY" "split" "$ZIP_PASSWORD" "$FOLDER_ENCODED" "$REPO_OWNER" "$REPO_NAME" "$BRANCH"
               else
                 if [ -n "$ZIP_PASSWORD" ]; then
-                  zip -0 -P "${ZIP_PASSWORD}" "$FINAL_PATH/$FINAL_FOLDER.zip" "$FILE" > /dev/null 2>&1
+                  cd "$(dirname "$FILE")" && zip -0 -j -P "${ZIP_PASSWORD}" "$FINAL_PATH/$FINAL_FOLDER.zip" "$(basename "$FILE")" > /dev/null 2>&1
                   generate_readme "$FINAL_PATH" "$FILENAME_NO_EXT" "$URL" "$QUALITY" "single" "$ZIP_PASSWORD" "$FOLDER_ENCODED" "$REPO_OWNER" "$REPO_NAME" "$BRANCH"
                 else
-                  cp "$FILE" "$FINAL_PATH/$FINAL_FOLDER.$EXT"
-                  generate_readme "$FINAL_PATH" "$FILENAME_NO_EXT" "$URL" "$QUALITY" "direct" "" "$FOLDER_ENCODED" "$REPO_OWNER" "$REPO_NAME" "$BRANCH"
+                  cd "$(dirname "$FILE")" && zip -0 -j "$FINAL_PATH/$FINAL_FOLDER.zip" "$(basename "$FILE")" > /dev/null 2>&1
+                  generate_readme "$FINAL_PATH" "$FILENAME_NO_EXT" "$URL" "$QUALITY" "single" "" "$FOLDER_ENCODED" "$REPO_OWNER" "$REPO_NAME" "$BRANCH"
                 fi
               fi
             done
@@ -555,7 +555,7 @@ jobs:
               fi
               
               # Small delay to avoid hitting rate limits
-              sleep 3
+              sleep 5
             done
             
             # Save file_ids for this folder
