@@ -16,10 +16,25 @@ on:
         required: true
         type: string
       max_results:
-        description: "تعداد نتایج (۱ تا ۱۰)"
+        description: "تعداد نتایج در هر صفحه (۱ تا ۱۰)"
         required: false
         type: string
         default: "5"
+      page:
+        description: "شماره صفحه (۱ تا ۵)"
+        required: false
+        type: string
+        default: "1"
+      sort_by:
+        description: "مرتب‌سازی نتایج"
+        required: false
+        type: choice
+        default: "relevance"
+        options:
+          - relevance
+          - date
+          - views
+          - rating
 
 jobs:
   search:
@@ -46,6 +61,8 @@ jobs:
           QUERY="${{ github.event.inputs.query }}"
           CHAT_ID="${{ github.event.inputs.chat_id }}"
           MAX_RESULTS="${{ github.event.inputs.max_results }}"
+          PAGE="${{ github.event.inputs.page }}"
+          SORT_BY="${{ github.event.inputs.sort_by }}"
           BOT_TOKEN="${{ secrets.BALE_BOT_TOKEN }}"
           
           send_message() {
@@ -102,14 +119,44 @@ jobs:
           
           RESULTS_FILE="/tmp/search_results.json"
           
-          yt-dlp \
-            "ytsearch${MAX_RESULTS}:${QUERY}" \
-            --dump-json \
-            --no-playlist \
-            --no-check-certificates \
-            --skip-download \
-            --flat-playlist \
-            2>/dev/null > "$RESULTS_FILE" || true
+          # ── مرتب‌سازی ──
+          case "${SORT_BY}" in
+            date)   SORT_FLAG="--date today" ;;
+            views)  SORT_FLAG="--format-sort view_count" ;;
+            rating) SORT_FLAG="--format-sort like_count" ;;
+            *)      SORT_FLAG="" ;;
+          esac
+          
+          # ── Pagination: صفحه ۱ = مستقیم، صفحه ۲+ = fetch بیشتر و slice ──
+          PAGE="${PAGE:-1}"
+          MAX_RESULTS="${MAX_RESULTS:-5}"
+          
+          if [ "$PAGE" -gt 1 ] 2>/dev/null; then
+            TOTAL_TO_FETCH=$((PAGE * MAX_RESULTS))
+            yt-dlp \
+              $SORT_FLAG \
+              "ytsearch${TOTAL_TO_FETCH}:${QUERY}" \
+              --dump-json \
+              --no-playlist \
+              --no-check-certificates \
+              --skip-download \
+              --flat-playlist \
+              2>/dev/null > /tmp/all_results.json || true
+            
+            START_LINE=$(( (PAGE - 1) * MAX_RESULTS + 1 ))
+            END_LINE=$(( START_LINE + MAX_RESULTS - 1 ))
+            sed -n "${START_LINE},${END_LINE}p" /tmp/all_results.json > "$RESULTS_FILE"
+          else
+            yt-dlp \
+              $SORT_FLAG \
+              "ytsearch${MAX_RESULTS}:${QUERY}" \
+              --dump-json \
+              --no-playlist \
+              --no-check-certificates \
+              --skip-download \
+              --flat-playlist \
+              2>/dev/null > "$RESULTS_FILE" || true
+          fi
           
           RESULT_COUNT=$(wc -l < "$RESULTS_FILE" 2>/dev/null || echo 0)
           
@@ -125,10 +172,19 @@ jobs:
           
           echo "✅ Found $RESULT_COUNT results."
           
-          BODY_FILE="/tmp/body.txt"
-          > "$BODY_FILE"
-          LINE_NUM=0
           
+          # ═══════════════════════════════════════════════
+          # 🆕 ارسال هر نتیجه جداگانه با تامبنیل
+          # ═══════════════════════════════════════════════
+          
+          # پیام هدر
+          send_message "🔍 *نتایج جستجو برای:* \`${QUERY}\`
+          ▫️ *صفحه:* ${PAGE}
+          ▫️ *مرتب‌سازی:* ${SORT_BY}
+          ▫️ *تعداد نتایج:* ${RESULT_COUNT} ویدیو"
+          
+          # ارسال هر ویدیو جداگانه
+          LINE_NUM=0
           while IFS= read -r line; do
             [ -z "$line" ] && continue
             LINE_NUM=$((LINE_NUM + 1))
@@ -139,8 +195,7 @@ jobs:
             CHANNEL=$(echo "$line" | jq -r '.channel // .uploader // "نامشخص"')
             VIEW_COUNT=$(echo "$line" | jq -r '.view_count // 0')
             DURATION=$(echo "$line" | jq -r '.duration // 0')
-            UPLOAD_DATE=$(echo "$line" | jq -r '.upload_date // ""')
-            DESCRIPTION=$(echo "$line" | jq -r '.description // ""')
+            THUMBNAIL=$(echo "$line" | jq -r '.thumbnail // ""')
             
             VIEW_COUNT_FORMATTED=$(format_number $VIEW_COUNT)
             
@@ -152,113 +207,88 @@ jobs:
               DURATION_FORMATTED=""
             fi
             
-            if [ -n "$UPLOAD_DATE" ] && [ ${#UPLOAD_DATE} -eq 8 ]; then
-              UPLOAD_FORMATTED="${UPLOAD_DATE:0:4}/${UPLOAD_DATE:4:2}/${UPLOAD_DATE:6:2}"
-            else
-              UPLOAD_FORMATTED=""
-            fi
+            # ── ساخت caption ──
+            CAPTION="🎬 *${TITLE}*
+          
+          👤 *کانال:* ${CHANNEL}"
             
-            if [ -n "$DESCRIPTION" ] && [ "$DESCRIPTION" != "null" ]; then
-              DESC_SHORT=$(echo "$DESCRIPTION" | head -1 | cut -c1-120)
-              if [ ${#DESCRIPTION} -gt 120 ]; then
-                DESC_SHORT="${DESC_SHORT}..."
+            [ -n "$DURATION_FORMATTED" ] && CAPTION="${CAPTION}
+          ⏱ *مدت:* ${DURATION_FORMATTED}"
+            
+            [ -n "$VIEW_COUNT_FORMATTED" ] && CAPTION="${CAPTION}
+          👁 *بازدید:* ${VIEW_COUNT_FORMATTED}"
+            
+            CAPTION="${CAPTION}
+          
+          🔗 [مشاهده در یوتیوب](${VIDEO_URL})"
+            
+            # ── کیبورد دانلود ──
+            KEYBOARD=$(jq -n \
+              --arg data "dl_${VIDEO_ID}" \
+              '{inline_keyboard: [[{text: "📥 دانلود این ویدیو", callback_data: $data}]]}')
+            
+            # ── ارسال با تامبنیل (اگه باشه) یا متن ساده ──
+            if [ -n "$THUMBNAIL" ] && [ "$THUMBNAIL" != "null" ]; then
+              jq -n \
+                --arg chat_id "$CHAT_ID" \
+                --arg photo "$THUMBNAIL" \
+                --arg caption "$CAPTION" \
+                --argjson reply_markup "$KEYBOARD" \
+                '{chat_id: $chat_id, photo: $photo, caption: $caption, parse_mode: "Markdown", reply_markup: $reply_markup}' \
+                > /tmp/photo_payload.json
+              
+              PHOTO_RESPONSE=$(curl -s -X POST "https://tapi.bale.ai/bot${BOT_TOKEN}/sendPhoto" \
+                -H "Content-Type: application/json" \
+                -d @/tmp/photo_payload.json)
+              
+              if ! echo "$PHOTO_RESPONSE" | jq -e '.ok == true' > /dev/null 2>&1; then
+                echo "  ⚠️ sendPhoto failed, falling back to text"
+                send_message "$CAPTION" "$KEYBOARD"
               fi
             else
-              DESC_SHORT=""
+              send_message "$CAPTION" "$KEYBOARD"
             fi
             
-            case $LINE_NUM in
-              1) NUM_ICON="1️⃣" ;;
-              2) NUM_ICON="2️⃣" ;;
-              3) NUM_ICON="3️⃣" ;;
-              4) NUM_ICON="4️⃣" ;;
-              5) NUM_ICON="5️⃣" ;;
-              6) NUM_ICON="6️⃣" ;;
-              7) NUM_ICON="7️⃣" ;;
-              8) NUM_ICON="8️⃣" ;;
-              9) NUM_ICON="9️⃣" ;;
-              10) NUM_ICON="🔟" ;;
-              *) NUM_ICON="${LINE_NUM}." ;;
-            esac
-            
-            echo "${NUM_ICON} *${TITLE}*" >> "$BODY_FILE"
-            
-            if [ -n "$DESC_SHORT" ]; then
-              echo "  📝 ${DESC_SHORT}" >> "$BODY_FILE"
-            fi
-            
-            echo "  🔗 [مشاهده در یوتیوب](${VIDEO_URL})" >> "$BODY_FILE"
-            echo "  👤 کانال: ${CHANNEL}" >> "$BODY_FILE"
-            
-            if [ -n "$DURATION_FORMATTED" ]; then
-              echo "  ⏱ مدت: ${DURATION_FORMATTED}" >> "$BODY_FILE"
-            fi
-            
-            if [ -n "$VIEW_COUNT_FORMATTED" ]; then
-              echo "  👁 بازدید: ${VIEW_COUNT_FORMATTED}" >> "$BODY_FILE"
-            fi
-            
-            if [ -n "$UPLOAD_FORMATTED" ]; then
-              echo "  📅 تاریخ: ${UPLOAD_FORMATTED}" >> "$BODY_FILE"
-            fi
-
-            echo "" >> "$BODY_FILE"
+            sleep 0.5  # جلوگیری از rate limit
             
           done < "$RESULTS_FILE"
           
-          HEADER="🔍 *نتایج جستجو*
-
-          ▫️ *عبارت:* \`${QUERY}\`
-          ▫️ *تعداد نتایج:* ${RESULT_COUNT} ویدیو
-
-          ━━━━━━━━━━━━━━━━━━━━━
-
-          "
+          # ═══════════════════════════════════════════════
+          # 🆕 دکمه‌های صفحه‌بندی
+          # ═══════════════════════════════════════════════
           
-          FOOTER="━━━━━━━━━━━━━━━━━━━━━
-
-          👇 *برای دانلود هر ویدیو، روی دکمه آن کلیک کنید.*
-
-          💡 _با ارسال دوباره عبارت، جستجوی جدید انجام دهید._"
+          # ساخت دکمه‌های قبلی/بعدی
+          # query رو کوتاه می‌کنیم که callback_data از ۶۴ بایت رد نشه
+          Q_SHORT=$(echo "$QUERY" | cut -c1-20 | sed 's/ /_/g')
           
-          FULL_MESSAGE="${HEADER}$(cat ${BODY_FILE})${FOOTER}"
-          
-          # ساخت دکمه‌ها — استفاده از فایل موقت برای جلوگیری از خطای sh
-          KEYBOARD_FILE="/tmp/keyboard.json"
-          echo '{"inline_keyboard":[' > "$KEYBOARD_FILE"
-          
-          LINE_NUM=0
-          FIRST=true
-          
-          while IFS= read -r line; do
-            [ -z "$line" ] && continue
-            LINE_NUM=$((LINE_NUM + 1))
-            
-            VIDEO_ID=$(echo "$line" | jq -r '.id // .display_id // ""')
-            TITLE=$(echo "$line" | jq -r '.title // "بدون عنوان"')
-            
-            BTN_TITLE=$(echo "$TITLE" | cut -c1-30)
-            if [ ${#TITLE} -gt 30 ]; then
-              BTN_TITLE="${BTN_TITLE}..."
-            fi
-            
-            if [ "$FIRST" = true ]; then
-              FIRST=false
-            else
-              echo ',' >> "$KEYBOARD_FILE"
-            fi
-            
-            jq -n \
-              --arg text "📥 ${BTN_TITLE}" \
-              --arg data "dl_${VIDEO_ID}" \
-              '[{"text": $text, "callback_data": $data}]' >> "$KEYBOARD_FILE"
-            
-          done < "$RESULTS_FILE"
-          
-          echo ']}' >> "$KEYBOARD_FILE"
-          
-          INLINE_KEYBOARD=$(cat "$KEYBOARD_FILE")
-          
-          send_message "$FULL_MESSAGE" "$INLINE_KEYBOARD"
-          
-          echo "✅ Search complete. ${RESULT_COUNT} results sent."
+          if [ "$PAGE" -gt 1 ] 2>/dev/null && [ "$RESULT_COUNT" -ge "$MAX_RESULTS" ] 2>/dev/null; then
+            # هم قبلی هم بعدی
+            PREV_PAGE=$((PAGE - 1))
+            NEXT_PAGE=$((PAGE + 1))
+            NAV_KEYBOARD=$(jq -n \
+              --arg prev_data "sp_${PREV_PAGE}_${Q_SHORT}_${MAX_RESULTS}_${SORT_BY}" \
+              --arg next_data "sp_${NEXT_PAGE}_${Q_SHORT}_${MAX_RESULTS}_${SORT_BY}" \
+              '{inline_keyboard: [[
+                {"text": "→ قبلی", "callback_data": $prev_data},
+                {"text": "بعدی ←", "callback_data": $next_data}
+              ]]}')
+          elif [ "$PAGE" -gt 1 ] 2>/dev/null; then
+            # فقط قبلی (صفحه آخر)
+            PREV_PAGE=$((PAGE - 1))
+            NAV_KEYBOARD=$(jq -n \
+              --arg prev_data "sp_${PREV_PAGE}_${Q_SHORT}_${MAX_RESULTS}_${SORT_BY}" \
+              '{inline_keyboard: [[
+                {"text": "→ قبلی", "callback_data": $prev_data}
+              ]]}')
+          elif [ "$RESULT_COUNT" -ge "$MAX_RESULTS" ] 2>/dev/null; then
+            # فقط بعدی (صفحه اول)
+            NEXT_PAGE=$((PAGE + 1))
+            NAV_KEYBOARD=$(jq -n \
+              --arg next_data "sp_${NEXT_PAGE}_${Q_SHORT}_${MAX_RESULTS}_${SORT_BY}" \
+              '{inline_keyboard: [[
+                {"text": "بعدی ←", "callback_data": $next_data}
+              ]]}')
+          else
+            # هیچکدوم (نتایج کمتر از یک صفحه)
+            NAV_KEYBOARD='{"inline_keyboard": []}'
+          fi
