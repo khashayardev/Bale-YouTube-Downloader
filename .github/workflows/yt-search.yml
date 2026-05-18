@@ -28,7 +28,7 @@ on:
         description: "تعداد نتایج در هر صفحه (۱ تا ۱۰)"
         required: false
         type: string
-        default: "5"
+        default: "10"
       page:
         description: "شماره صفحه (۱ تا ۵)"
         required: false
