@@ -201,6 +201,59 @@ class GitHubClient
     }
 
     /**
+     * Dispatch search workflow with all filter parameters
+     * 
+     * @param string $query Search query
+     * @param string|int $chatId User's chat ID
+     * @param string $maxResults Results per page
+     * @param string $page Page number
+     * @param string $sortBy Sort order
+     * @param string $durationFilter Duration filter
+     * @param string $dateFilter Date filter
+     * @param string $liveFilter Live filter
+     * @param string $searchType Search type (video/playlist)
+     * @return array{success: bool, http_code: int, rate_remaining: int}
+     */
+    public function dispatchSearchWithFilters(
+        string $query,
+        string|int $chatId,
+        string $maxResults = '5',
+        string $page = '1',
+        string $sortBy = 'relevance',
+        string $durationFilter = 'any',
+        string $dateFilter = 'any',
+        string $liveFilter = 'false',
+        string $searchType = 'video'
+    ): array {
+        $url = "{$this->apiBase}/actions/workflows/" . WORKFLOW_SEARCH . "/dispatches";
+
+        $postData = [
+            'ref'    => $this->ref,
+            'inputs' => [
+                'query'            => $query,
+                'chat_id'          => (string) $chatId,
+                'max_results'      => $maxResults,
+                'page'             => $page,
+                'sort_by'          => $sortBy,
+                'duration_filter'  => $durationFilter,
+                'date_filter'      => $dateFilter,
+                'live_filter'      => $liveFilter,
+                'search_type'      => $searchType,
+            ],
+        ];
+
+        $result = $this->makeRequest('POST', $url, $postData);
+
+        Logger::githubApi(
+            'dispatch_search_filtered',
+            $result['success'],
+            $result['http_code'],
+            $this->rateLimitRemaining
+        );
+
+        return $result;
+    }
+    /**
      * ============================================================
      * Workflow Status
      * ============================================================
