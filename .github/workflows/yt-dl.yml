@@ -177,6 +177,8 @@ jobs:
           FORMAT="${{ env.FORMAT }}"
           QUALITY="${{ env.QUALITY }}"
           ZIP_PASSWORD="${{ env.ZIP_PASSWORD }}"
+          CHAT_ID="${{ github.event.inputs.chat_id }}"
+          BALE_BOT_TOKEN="${{ secrets.BALE_BOT_TOKEN }}"
           SPLIT_BYTES=$(( $SPLIT_SIZE_MB * 1024 * 1024 ))
           REPO_OWNER="${{ env.REPO_OWNER }}"
           REPO_NAME="${{ env.REPO_NAME }}"
@@ -353,7 +355,8 @@ jobs:
             fi
             
             find "$TMP_DIR" -name "*.part" -delete 2>/dev/null || true
-            
+
+            FILE_TOO_LARGE="false"
             for FILE in "$TMP_DIR"/*; do
               [ -f "$FILE" ] || continue
               [[ "$FILE" == *.jpg ]] || [[ "$FILE" == *.webp ]] && continue
@@ -375,6 +378,14 @@ jobs:
               
               echo "  📦 $BASENAME ($(( SIZE / 1024 / 1024 ))MB)"
               
+              # 🆕 Reject files larger than 2GB
+              MAX_SIZE_BYTES=$(( 2048 * 1024 * 1024 ))
+              if [ "$SIZE" -gt "$MAX_SIZE_BYTES" ]; then
+                echo "  ⚠️ File too large ($(( SIZE / 1024 / 1024 ))MB) — skipping"
+                FILE_TOO_LARGE="true"
+                continue
+              fi
+              
               FINAL_FOLDER=$(get_unique_folder "$FILENAME_NO_EXT")
               FINAL_PATH="$BACKUP_DIR/$FINAL_FOLDER"
               mkdir -p "$FINAL_PATH"
@@ -395,7 +406,10 @@ jobs:
                 if [ -n "$ZIP_PASSWORD" ]; then
                   cd "$(dirname "$FILE")" && 7z a -tzip -v${SPLIT_SIZE_MB}m -p"${ZIP_PASSWORD}" -mx=0 "$FINAL_PATH/$FINAL_FOLDER.zip" "$(basename "$FILE")" > /dev/null 2>&1
                 else
-                  cd "$(dirname "$FILE")" && 7z a -tzip -v${SPLIT_SIZE_MB}m -mx=0 "$FINAL_PATH/$FINAL_FOLDER.zip" "$(basename "$FILE")" > /dev/null 2>&1
+                  cd "$(dirname "$FILE")" && zip -0 -j -s ${SPLIT_SIZE_MB}m "$FINAL_PATH/$FINAL_FOLDER.zip" "$(basename "$FILE")" > /dev/null 2>&1 || {
+                    echo "  ⚠️ zip split failed, trying single zip..."
+                    cd "$(dirname "$FILE")" && zip -0 -j "$FINAL_PATH/$FINAL_FOLDER.zip" "$(basename "$FILE")" > /dev/null 2>&1
+                  }
                 fi
                 generate_readme "$FINAL_PATH" "$FILENAME_NO_EXT" "$URL" "$QUALITY" "split" "$ZIP_PASSWORD" "$FOLDER_ENCODED" "$REPO_OWNER" "$REPO_NAME" "$BRANCH"
               else
@@ -408,6 +422,23 @@ jobs:
                 fi
               fi
             done
+            
+            # 🆕 اگه فایل خیلی بزرگ بود، به کاربر notify بده
+            if [ "$FILE_TOO_LARGE" = "true" ]; then
+              echo "  📢 Notifying user about large file..."
+              
+              jq -n \
+                --arg chat_id "${CHAT_ID:-}" \
+                --arg text "⚠️ *فایل خیلی بزرگ بود!*\n\nحجم فایل بیشتر از ۲ گیگابایت است و قابل پردازش نیست.\n\n💡 *راه‌حل:* لطفاً کیفیت پایین‌تری انتخاب کنید (مثلاً 1080p یا 720p) و دوباره دانلود کنید." \
+                '{chat_id: $chat_id, text: $text, parse_mode: "Markdown"}' \
+                > /tmp/large_file_notify.json
+              
+              curl -s -X POST "https://tapi.bale.ai/bot${BALE_BOT_TOKEN}/sendMessage" \
+                -H "Content-Type: application/json" \
+                -d @/tmp/large_file_notify.json > /dev/null 2>&1
+              
+              FILE_TOO_LARGE="false"
+            fi
             
             rm -rf "$TMP_DIR" /tmp/saved_thumb_${URL_INDEX}.jpg 2>/dev/null
             DOWNLOADED_COUNT=$((DOWNLOADED_COUNT + 1))
