@@ -163,6 +163,11 @@ jobs:
           
           echo "FORMAT=$FORMAT" >> $GITHUB_ENV
           echo "SPLIT_BYTES=$(( $SPLIT_SIZE_MB * 1024 * 1024 ))" >> $GITHUB_ENV
+          
+          # 🆕 Auto-downgrade flag for huge files
+          echo "AUTO_DOWNGRADE=false" >> $GITHUB_ENV
+          echo "ORIGINAL_QUALITY=${YT_QUALITY}" >> $GITHUB_ENV
+          
           echo "✅ Setup complete"
 
       # ── Step 6: Download & Process Videos ──────────────
@@ -307,6 +312,20 @@ jobs:
             echo "🔍 Available formats:"
             yt-dlp -F --proxy "socks5://127.0.0.1:1080" --js-runtimes deno --remote-components ejs:github "$URL" 2>/dev/null || echo "  (could not list formats)"
             echo ""
+            
+            # 🆕 Check estimated file size for best quality
+            if [ "$QUALITY" = "best" ] || [ "$QUALITY" = "2160" ] || [ "$QUALITY" = "1440" ]; then
+              ESTIMATED_SIZE=$(yt-dlp --proxy "socks5://127.0.0.1:1080" --js-runtimes deno --remote-components ejs:github --print "%(filesize_approx)s" "$URL" 2>/dev/null || echo "0")
+              ESTIMATED_SIZE_MB=$(( ESTIMATED_SIZE / 1024 / 1024 ))
+              
+              if [ "$ESTIMATED_SIZE" -gt 0 ] 2>/dev/null && [ "$ESTIMATED_SIZE" -gt 2147483648 ] 2>/dev/null; then
+                echo "  ⚠️ Estimated size: ${ESTIMATED_SIZE_MB}MB — exceeds 2GB limit"
+                echo "  🔄 Auto-downgrading quality from ${QUALITY} to 1080p..."
+                QUALITY="1080"
+                FORMAT="bestvideo[height<=1080]+bestaudio/bestvideo[height<=1080]*+bestaudio*/bestvideo+bestaudio/best"
+                AUTO_DOWNGRADE="true"
+              fi
+            fi
             
             DOWNLOAD_SUCCESS=false
             for METHOD in 1 2 3 4 5 6 7 8; do
@@ -579,11 +598,18 @@ jobs:
               
               echo "  📄 Uploading: $FILENAME"
               
+              # 🆕 Caption with quality info
+              if [ "$AUTO_DOWNGRADE" = "true" ]; then
+                CAPTION_TEXT="📦 ${FOLDER_NAME} - ${FILENAME} | 🎬 1080p (خودکار)"
+              else
+                CAPTION_TEXT="📦 ${FOLDER_NAME} - ${FILENAME} | 🎬 ${ORIGINAL_QUALITY:-best}"
+              fi
+              
               # Send document to channel
               RESPONSE=$(curl -s -X POST "${BALE_API_URL}/sendDocument" \
                 -F "chat_id=${CHANNEL_ID}" \
                 -F "document=@${FILE}" \
-                -F "caption=📦 ${FOLDER_NAME} - ${FILENAME}")
+                -F "caption=${CAPTION_TEXT}")
               
               # Check response and extract file_id
               if echo "$RESPONSE" | jq -e '.ok == true' > /dev/null 2>&1; then
