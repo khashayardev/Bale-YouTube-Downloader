@@ -31,7 +31,7 @@
  *   Reason: Bale sends chat_id as integer (e.g. 241726352) but strict_types=1
  *   requires exact type match. Using union type string|int fixes the TypeError.
  * 
- * @package     https://github.com/khashayardev/Bale-YouTube-Downloader
+ * @package     KhashayarDownloader
  * @version     5.0.1
  * @author      Khashayar
  * @license     MIT
@@ -598,6 +598,21 @@ class BaleNotifier
                     ['text' => '📊 وضعیت سرور', 'callback_data' => 'menu_status'],
                     ['text' => '🔄 بروزرسانی کانال', 'callback_data' => 'update_channel'],
                 ],
+            ],
+        ];
+    }
+
+    /**
+     * Create a simple "Back to Main Menu" button
+     * Used in all submenus for easy navigation
+     * 
+     * @return array<string, mixed> Inline keyboard markup
+     */
+    public static function backToMainMenu(): array
+    {
+        return [
+            'inline_keyboard' => [
+                [['text' => '🔙 بازگشت به منوی اصلی', 'callback_data' => 'back_to_main']],
             ],
         ];
     }
